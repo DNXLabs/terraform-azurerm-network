@@ -1,11 +1,6 @@
-variable "naming" {
-  description = "Azure taxonomy inputs."
-  type = object({
-    org      = string
-    env      = string
-    region   = string
-    workload = string
-  })
+variable "name" {
+  description = "Resource name prefix used for all resources in this module."
+  type        = string
 }
 
 variable "resource_group" {
@@ -18,9 +13,20 @@ variable "resource_group" {
 }
 
 variable "tags" {
-  description = "Extra tags merged with default taxonomy tags."
+  description = "Extra tags merged with default tags."
   type        = map(string)
   default     = {}
+}
+
+variable "diagnostics" {
+  description = "Optional Azure Monitor diagnostic settings."
+  type = object({
+    enabled                        = optional(bool, false)
+    log_analytics_workspace_id     = optional(string)
+    storage_account_id             = optional(string)
+    eventhub_authorization_rule_id = optional(string)
+  })
+  default = {}
 }
 
 variable "vnet" {
@@ -48,6 +54,7 @@ variable "subnets" {
     })))
 
     nsg = optional(object({
+      name  = optional(string)
       rules = optional(list(object({
         name                         = string
         priority                     = number
