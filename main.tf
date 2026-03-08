@@ -72,7 +72,7 @@ resource "azurerm_subnet" "this" {
 resource "azurerm_network_security_group" "this" {
   for_each = local.nsg_subnets
 
-  name                = "nsg-${local.prefix}-${each.key}-001"
+  name                = coalesce(try(each.value.nsg.name, null), "nsg-${local.prefix}-${each.key}-001")
   location            = local.rg_loc
   resource_group_name = local.rg_name
   tags                = local.tags

@@ -13,33 +13,30 @@ This module provides a comprehensive solution for Azure networking infrastructur
 - **Subnet Delegation**: Support for service delegations (e.g., Azure Database, App Service)
 - **VNet Peering**: Configure multiple peering connections to other VNets
 - **Resource Group**: Create new or use existing resource groups
-- **Tagging Strategy**: Built-in taxonomy-based tagging with custom tag support
+- **Tagging Strategy**: Built-in default tagging with custom tag support
 - **Azure Bastion Support**: Proper handling of AzureBastionSubnet without automatic NSG association
 
 ## Usage
 
-### Basic Example
+### Example 1 — Non-Prod (Basic VNet)
+
+A simple VNet with two subnets for development environments.
 
 ```hcl
 module "network" {
   source = "./modules/network"
 
-  naming = {
-    org      = "mycompany"
-    env      = "prod"
-    region   = "aue"
-    workload = "app"
-  }
+  name = "mycompany-dev-aue-app"
 
   resource_group = {
     create   = true
-    name     = "rg-mycompany-prod-aue-app-001"
+    name     = "rg-mycompany-dev-aue-app-001"
     location = "australiaeast"
   }
 
   tags = {
     project     = "infrastructure"
-    environment = "production"
+    environment = "development"
   }
 
   vnet = {
@@ -56,31 +53,34 @@ module "network" {
       address_prefixes = ["10.0.2.0/24"]
     }
   ]
+
+  nat_gateway = {
+    enabled = false
+  }
+
+  peerings = []
 }
 ```
 
-### Complete Example with NSG Rules and NAT Gateway
+### Example 2 — Production (NSG Rules, NAT Gateway, Delegation)
+
+A production VNet with NSG rules per subnet, NAT Gateway for outbound traffic, subnet delegation for MySQL, and Bastion.
 
 ```hcl
 module "network" {
   source = "./modules/network"
 
-  naming = {
-    org      = "managed-services"
-    env      = "lab"
-    region   = "aue"
-    workload = "stg"
-  }
+  name = "contoso-prod-aue-platform"
 
   resource_group = {
     create   = true
-    name     = "rg-managed-services-lab-aue-stg-001"
+    name     = "rg-contoso-prod-aue-platform-001"
     location = "australiaeast"
   }
 
   tags = {
-    project     = "managed-services-lab"
-    environment = "lab"
+    project     = "platform-infrastructure"
+    environment = "production"
     stack       = "network"
   }
 
@@ -91,9 +91,9 @@ module "network" {
   subnets = [
     # Application Gateway subnet
     {
-      name             = "snet-stg-agw"
+      name             = "snet-agw"
       address_prefixes = ["172.16.0.0/27"]
-      
+
       nsg = {
         rules = [
           {
@@ -119,12 +119,12 @@ module "network" {
         ]
       }
     },
-    
+
     # Client subnet with NAT Gateway
     {
-      name             = "snet-stg-client"
+      name             = "snet-client"
       address_prefixes = ["172.16.0.64/26"]
-      
+
       nsg = {
         rules = [
           {
@@ -150,12 +150,12 @@ module "network" {
         ]
       }
     },
-    
+
     # App subnet with NAT Gateway
     {
-      name             = "snet-stg-app"
+      name             = "snet-app"
       address_prefixes = ["172.16.0.128/26"]
-      
+
       nsg = {
         rules = [
           {
@@ -181,12 +181,12 @@ module "network" {
         ]
       }
     },
-    
+
     # Database subnet with delegation
     {
-      name             = "snet-stg-data"
+      name             = "snet-data"
       address_prefixes = ["172.16.1.0/27"]
-      
+
       delegations = [
         {
           name = "mysql-flex-delegation"
@@ -196,7 +196,7 @@ module "network" {
           }
         }
       ]
-      
+
       nsg = {
         rules = [
           {
@@ -212,7 +212,7 @@ module "network" {
         ]
       }
     },
-    
+
     # Azure Bastion subnet
     {
       name             = "AzureBastionSubnet"
@@ -224,13 +224,13 @@ module "network" {
   nat_gateway = {
     enabled              = true
     idle_timeout_minutes = 4
-    subnet_names         = ["snet-stg-client", "snet-stg-app"]
-    
+    subnet_names         = ["snet-client", "snet-app"]
+
     public_ip = {
       enabled = true
       count   = 1
     }
-    
+
     public_ip_prefix = {
       enabled       = true
       prefix_length = 30
@@ -248,12 +248,7 @@ module "network" {
 module "network" {
   source = "./modules/network"
 
-  naming = {
-    org      = "mycompany"
-    env      = "prod"
-    region   = "aue"
-    workload = "hub"
-  }
+  name = "mycompany-prod-aue-hub"
 
   resource_group = {
     create   = true
@@ -271,6 +266,10 @@ module "network" {
       address_prefixes = ["10.0.1.0/24"]
     }
   ]
+
+  nat_gateway = {
+    enabled = false
+  }
 
   peerings = [
     {
@@ -295,26 +294,22 @@ azure:
   location: australiaeast
 
 network:
-  naming:
-    org: managed-services
-    env: lab
-    region: aue
-    workload: stg
-  
+  name: managed-services-lab-aue-stg
+
   resource_group:
     create: true
     name: rg-managed-services-lab-aue-stg-001
     location: australiaeast
-  
+
   tags:
     project: managed-services-lab
     environment: lab
     stack: network
-  
+
   vnet:
     address_space:
       - 172.16.0.0/22
-  
+
   subnets:
     - name: snet-stg-client
       address_prefixes: [172.16.0.64/26]
@@ -328,7 +323,7 @@ network:
             source_address_prefix: 192.168.0.0/16
             destination_address_prefix: 172.16.0.64/26
             destination_port_ranges: ["22", "3389"]
-  
+
   nat_gateway:
     enabled: true
     idle_timeout_minutes: 4
@@ -348,8 +343,8 @@ locals {
 
 module "network" {
   source = "./modules/network"
-  
-  naming         = local.workspace.network.naming
+
+  name           = local.workspace.network.name
   resource_group = local.workspace.network.resource_group
   tags           = try(local.workspace.network.tags, {})
   vnet           = local.workspace.network.vnet
@@ -370,7 +365,7 @@ nat_gateway = {
   enabled              = true
   idle_timeout_minutes = 10
   subnet_names         = ["snet-app", "snet-web"]
-  
+
   public_ip = {
     enabled = true
     count   = 2  # Creates 2 public IPs
@@ -384,7 +379,7 @@ nat_gateway = {
 nat_gateway = {
   enabled              = true
   subnet_names         = ["snet-app"]
-  
+
   public_ip_prefix = {
     enabled       = true
     prefix_length = 30  # Provides 4 IPs (2^(32-30))
@@ -398,12 +393,12 @@ nat_gateway = {
 nat_gateway = {
   enabled              = true
   subnet_names         = ["snet-app", "snet-web"]
-  
+
   public_ip = {
     enabled = true
     count   = 2
   }
-  
+
   public_ip_prefix = {
     enabled       = true
     prefix_length = 31  # Provides 2 IPs (2^(32-31))
@@ -425,7 +420,7 @@ The module includes built-in validations:
 ### NSG Behavior
 
 - NSGs are automatically created for subnets that define an `nsg` object
-- NSG naming follows the pattern: `nsg-{prefix}-{subnet_name}-001`
+- NSG naming follows the pattern: `nsg-{name}-{subnet_name}-001`
 - NSGs are automatically associated with their subnets, except for `AzureBastionSubnet`
 - Azure Bastion subnet NSG association must be handled manually due to specific compliance requirements
 
@@ -484,7 +479,7 @@ For services that require subnet delegation (e.g., Azure Database, App Service):
 {
   name             = "snet-mysql"
   address_prefixes = ["10.0.3.0/27"]
-  
+
   delegations = [
     {
       name = "mysql-delegation"
@@ -506,32 +501,18 @@ Common delegation services:
 
 ## Naming Convention
 
-Resources are named using the taxonomy pattern: `{org}-{env}-{region}-{workload}`
+Resources are named using the prefix pattern: `{name}`
 
-Example with naming:
-```hcl
-naming = {
-  org      = "contoso"
-  env      = "prod"
-  region   = "aue"
-  workload = "app"
-}
-```
-
-Generates resources like:
-- VNet: `vnet-contoso-prod-aue-app-001`
-- NSG: `nsg-contoso-prod-aue-app-{subnet_name}-001`
-- Resource Group: `rg-contoso-prod-aue-app-001`
+Example:
+- VNet: `vnet-{name}-001`
+- NSG: `nsg-{name}-{subnet_name}-001`
 
 ## Tags
 
-The module automatically applies taxonomy-based tags and merges with custom tags:
+The module automatically applies default tags and merges with custom tags:
 
 **Default tags** (applied automatically):
-- `org`: from naming.org
-- `env`: from naming.env
-- `region`: from naming.region
-- `workload`: from naming.workload
+- `name`: from var.name
 - `managedBy`: "terraform"
 
 **Custom tags** (merged):
@@ -572,26 +553,15 @@ tags = {
 
 | Name | Description | Type | Required |
 |------|-------------|------|----------|
-| `naming` | Azure taxonomy inputs (org, env, region, workload) | object | yes |
+| `name` | Resource name prefix for all resources | string | yes |
 | `resource_group` | Resource group configuration | object | yes |
 | `vnet` | Virtual network configuration | object | yes |
 | `subnets` | List of subnet configurations | list(object) | yes |
-| `tags` | Extra tags merged with default taxonomy tags | map(string) | no |
+| `tags` | Extra tags merged with default tags | map(string) | no |
 | `nat_gateway` | NAT Gateway configuration | object | no |
 | `peerings` | VNet peering configurations | list(object) | no |
 
 ### Detailed Input Specifications
-
-#### naming
-
-```hcl
-object({
-  org      = string  # Organization name
-  env      = string  # Environment (dev, lab, prod)
-  region   = string  # Region abbreviation (aue, eus, weu)
-  workload = string  # Workload identifier
-})
-```
 
 #### resource_group
 
@@ -618,9 +588,9 @@ object({
 list(object({
   name             = string       # Subnet name
   address_prefixes = list(string) # Subnet CIDR blocks
-  
+
   service_endpoints = optional(list(string)) # Service endpoints
-  
+
   delegations = optional(list(object({
     name = string
     service_delegation = object({
@@ -628,7 +598,7 @@ list(object({
       actions = list(string)
     })
   })))
-  
+
   nsg = optional(object({
     rules = optional(list(object({
       name                         = string
@@ -657,12 +627,12 @@ object({
   enabled              = bool
   idle_timeout_minutes = optional(number, 10)
   subnet_names         = optional(list(string), [])
-  
+
   public_ip = optional(object({
     enabled = bool
     count   = optional(number, 1)
   }))
-  
+
   public_ip_prefix = optional(object({
     enabled       = bool
     prefix_length = number  # 28-31 for IPv4
@@ -683,17 +653,6 @@ list(object({
 }))
 ```
 
-## Best Practices
-
-1. **Subnet Sizing**: Plan subnet sizes carefully considering future growth
-2. **NSG Rules**: Use specific rules instead of broad wildcards when possible
-3. **NAT Gateway**: Use for outbound internet connectivity instead of public IPs on VMs
-4. **Tagging**: Always include meaningful tags for cost allocation and governance
-5. **Naming**: Follow consistent naming conventions across all resources
-6. **Security**: Implement least-privilege access with NSG rules
-7. **Azure Bastion**: Always use /26 subnet size for AzureBastionSubnet
-8. **Service Endpoints**: Enable for Azure services to improve performance and security
-
 ## Common Scenarios
 
 ### Hub-Spoke Network Topology
@@ -702,14 +661,9 @@ list(object({
 # Hub VNet
 module "hub_network" {
   source = "./modules/network"
-  
-  naming = {
-    org      = "contoso"
-    env      = "prod"
-    region   = "aue"
-    workload = "hub"
-  }
-  
+
+  name = "contoso-prod-aue-hub"
+
   resource_group = {
     create   = true
     name     = "rg-contoso-prod-aue-hub-001"
@@ -719,11 +673,11 @@ module "hub_network" {
   tags = {
     tier = "hub"
   }
-  
+
   vnet = {
     address_space = ["10.0.0.0/16"]
   }
-  
+
   subnets = [
     {
       name             = "AzureFirewallSubnet"
@@ -734,6 +688,10 @@ module "hub_network" {
       address_prefixes = ["10.0.2.0/26"]
     }
   ]
+
+  nat_gateway = {
+    enabled = false
+  }
 
   # Peering from Hub to Spoke
   peerings = [
@@ -751,14 +709,9 @@ module "hub_network" {
 # Spoke VNet
 module "spoke_network" {
   source = "./modules/network"
-  
-  naming = {
-    org      = "contoso"
-    env      = "prod"
-    region   = "aue"
-    workload = "app1"
-  }
-  
+
+  name = "contoso-prod-aue-app1"
+
   resource_group = {
     create   = true
     name     = "rg-contoso-prod-aue-app1-001"
@@ -768,18 +721,22 @@ module "spoke_network" {
   tags = {
     tier = "spoke"
   }
-  
+
   vnet = {
     address_space = ["10.1.0.0/16"]
   }
-  
+
   subnets = [
     {
       name             = "snet-app"
       address_prefixes = ["10.1.1.0/24"]
     }
   ]
-  
+
+  nat_gateway = {
+    enabled = false
+  }
+
   # Peering from Spoke to Hub
   peerings = [
     {
@@ -799,24 +756,19 @@ module "spoke_network" {
 ```hcl
 module "app_network" {
   source = "./modules/network"
-  
-  naming = {
-    org      = "mycompany"
-    env      = "prod"
-    region   = "aue"
-    workload = "webapp"
-  }
-  
+
+  name = "mycompany-prod-aue-webapp"
+
   resource_group = {
     create   = true
     name     = "rg-mycompany-prod-aue-webapp-001"
     location = "australiaeast"
   }
-  
+
   vnet = {
     address_space = ["10.0.0.0/16"]
   }
-  
+
   subnets = [
     # Web tier
     {
@@ -837,7 +789,7 @@ module "app_network" {
         ]
       }
     },
-    
+
     # Application tier
     {
       name             = "snet-app"
@@ -857,12 +809,12 @@ module "app_network" {
         ]
       }
     },
-    
+
     # Data tier (delegated for MySQL)
     {
       name             = "snet-data"
       address_prefixes = ["10.0.3.0/24"]
-      
+
       delegations = [
         {
           name = "mysql-delegation"
@@ -872,7 +824,7 @@ module "app_network" {
           }
         }
       ]
-      
+
       nsg = {
         rules = [
           {
@@ -889,11 +841,11 @@ module "app_network" {
       }
     }
   ]
-  
+
   nat_gateway = {
     enabled      = true
     subnet_names = ["snet-app"]
-    
+
     public_ip = {
       enabled = true
       count   = 1
@@ -901,6 +853,17 @@ module "app_network" {
   }
 }
 ```
+
+## Best Practices
+
+1. **Subnet Sizing**: Plan subnet sizes carefully considering future growth
+2. **NSG Rules**: Use specific rules instead of broad wildcards when possible
+3. **NAT Gateway**: Use for outbound internet connectivity instead of public IPs on VMs
+4. **Tagging**: Always include meaningful tags for cost allocation and governance
+5. **Naming**: Follow consistent naming conventions across all resources
+6. **Security**: Implement least-privilege access with NSG rules
+7. **Azure Bastion**: Always use /26 subnet size for AzureBastionSubnet
+8. **Service Endpoints**: Enable for Azure services to improve performance and security
 
 ## License
 
